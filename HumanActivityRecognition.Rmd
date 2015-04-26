@@ -1,0 +1,104 @@
+---
+title: "Human Activity Recognition Prediction"
+author: "Sharath G"
+date: "April 26, 2015"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+```{r global_options, echo = FALSE}
+    library(knitr)
+    library(ggplot2)
+    library(caret)
+    library(randomForest)
+    opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+
+###Background###
+In this project, we build a model to accuractely  classify activities in the 'human activity recognition' data set.
+This human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time (like with the Daily Living Activities dataset above). Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)
+
+###Loading the dataset###
+
+```{r, results ='hide', fig.keep='none'}
+train <- read.csv("C:\\Users\\sharathlives\\Desktop\\R_files\\data\\pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+test <- read.csv("C:\\Users\\sharathlives\\Desktop\\R_files\\data\\pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+dim(train)
+dim(test)
+```
+
+###Clean the Data###
+
+First, we remove columns that we don't need for the analysis. 
+
+```{r, results ='hide', fig.keep='none'}
+train <- train[, -c(1:7)]
+test <- test[, -c(1:7)]
+dim(train)
+dim(test)
+```
+
+Next, remove columns that have more than 50% NA's. First duplicate the dataset. Then, for every column in train that has more than 50% NA's compare that column name with train2 and remove that column from train2.
+
+```{r, results = 'hide', fig.keep = 'none'}
+train2 <- train 
+for(i in 1:length(train)) { 
+  if( sum( is.na( train[, i] ) ) /nrow(train) >= .5 ) { 
+    for(j in 1:length(train2)) {
+      if( length( grep(names(train[i]), names(train2)[j]) ) ==1)  { 
+        train2 <- train2[ , -j] 
+      }   
+    } 
+  }
+}
+```
+
+Look for near zero variance variables. Tried removing some variables with low variance but does not affect the model.
+```{r, results = 'hide', fig.keep = 'none'}
+myDataNZV <- nearZeroVar(train2, saveMetrics=TRUE)
+```
+
+Partition the dataset to 80:20 to create validation set. I don't perform cross-validation because I get good results by keepong it simple. 
+```{r, results = 'hide', fig.keep = 'none'}
+partition <- createDataPartition(y = train2$classe, p = 0.8, list = FALSE)
+trainMain <- train2[partition, ]
+trainTest <-  train2[-partition, ]
+dim(trainMain)
+dim(trainTest)
+```
+
+
+###Build the model###
+We use the random forest model. This gives better accuracy than CART. As mentioned above, there is no need to perform cross-validation. Here is the code for reference for 4 fold cross-validation.  
+model1 <- train(classe ~., data = trainMain, method = "rf", prox = TRUE, 
+               trControl = trainControl(method = "cv", number = 4, allowParallel = TRUE))
+```{r}
+model1 <- randomForest(classe ~., data = trainMain)
+varImpPlot(model1)
+```
+
+Now, test for insample error on the validation set. We get very good results with an accuracy of over 99%.
+```{r}
+predictMain <- predict(model1, trainTest, type = "class")
+confusionMatrix(predictMain, trainTest$classe)
+```
+
+Now, test the model on the test set
+```{r, results = 'hide'}
+predictTest = predict(model1, test, type = "class")
+```
+
+###Create function to generate the predictions###
+```{r, results = 'hide'}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+```
